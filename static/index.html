@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 面试官 — 多 Agent 智能面试系统</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+/* ============================================================
+   CSS Reset & Variables
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary: #667eea;
+  --primary-dark: #5a4fcf;
+  --primary-light: #818cf8;
+  --bg: #f0f2f5;
+  --sidebar-bg: #1e1e2e;
+  --sidebar-hover: #2a2a3e;
+  --sidebar-active: #2e2e42;
+  --sidebar-text: #cdd6f4;
+  --sidebar-muted: #6c7086;
+  --chat-bg: #f5f7fb;
+  --user-bubble-bg: #667eea;
+  --user-bubble-text: #ffffff;
+  --ai-bubble-bg: #ffffff;
+  --ai-bubble-border: #e5e7eb;
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-lg: 0 10px 25px rgba(0,0,0,0.1);
+  --transition: 0.2s ease;
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: var(--bg); color: #1f2937; overflow: hidden; }
+
+/* ============================================================
+   Landing Page
+   ============================================================ */
+#landing-page {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: #0f0f1a;
+  overflow: hidden;
+}
+#landing-canvas {
+  position: absolute; inset: 0; z-index: 0;
+}
+.landing-content {
+  position: relative; z-index: 1;
+  text-align: center; padding: 2rem;
+}
+.landing-content h1 {
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-weight: 800;
+  background: linear-gradient(135deg, #667eea 0%, #a78bfa 40%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.05em;
+}
+.landing-content .subtitle {
+  font-size: clamp(1rem, 2vw, 1.3rem);
+  color: #94a3b8;
+  margin-bottom: 2.5rem;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+}
+.landing-content .cta-btn {
+  display: inline-block;
+  padding: 1rem 3rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 20px rgba(102,126,234,0.4);
+  letter-spacing: 0.05em;
+}
+.landing-content .cta-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 8px 30px rgba(102,126,234,0.55);
+}
+.landing-content .cta-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* ============================================================
+   Main Chat Layout
+   ============================================================ */
+#chat-app {
+  display: none; height: 100vh; width: 100vw;
+  grid-template-rows: 56px 1fr;
+  grid-template-columns: 280px 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "sidebar main";
+}
+#chat-app.visible { display: grid; }
+
+/* Top Bar */
+#topbar {
+  grid-area: topbar;
+  background: linear-gradient(135deg, #667eea 0%, #5a4fcf 100%);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 1.5rem; color: #fff; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+#topbar .brand { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.02em; }
+#topbar .status-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: #10b981;
+  display: inline-block; margin-right: 6px; animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+#topbar .status-text { font-size: 0.85rem; opacity: 0.9; }
+
+/* Sidebar */
+#sidebar {
+  grid-area: sidebar;
+  background: var(--sidebar-bg);
+  display: flex; flex-direction: column;
+  overflow: hidden; color: var(--sidebar-text);
+}
+#sidebar .sidebar-section { padding: 12px 16px; }
+#sidebar .sidebar-section + .sidebar-section { border-top: 1px solid rgba(255,255,255,0.06); }
+
+#btn-new-session {
+  width: 100%; padding: 10px 16px;
+  font-size: 0.9rem; font-weight: 600;
+  color: #fff; background: rgba(102,126,234,0.3);
+  border: 1px solid rgba(102,126,234,0.5); border-radius: var(--radius-sm);
+  cursor: pointer; transition: var(--transition);
+  display: flex; align-items: center; gap: 8px; justify-content: center;
+}
+#btn-new-session:hover { background: rgba(102,126,234,0.5); }
+
+#session-list {
+  flex: 1; overflow-y: auto; padding: 4px 8px;
+}
+#session-list::-webkit-scrollbar { width: 4px; }
+#session-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.session-item {
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: var(--transition);
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 2px; font-size: 0.85rem;
+  border-left: 3px solid transparent;
+}
+.session-item:hover { background: var(--sidebar-hover); }
+.session-item.active {
+  background: var(--sidebar-active);
+  border-left-color: var(--primary);
+}
+.session-item .session-title {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-right: 8px;
+}
+.session-item .session-meta {
+  font-size: 0.7rem; color: var(--sidebar-muted); flex-shrink: 0;
+}
+.session-item .session-delete {
+  opacity: 0; font-size: 0.8rem; padding: 2px 6px; cursor: pointer;
+  border-radius: 4px; color: #ef4444; transition: var(--transition);
+  flex-shrink: 0; margin-left: 4px;
+}
+.session-item:hover .session-delete { opacity: 0.7; }
+.session-item .session-delete:hover { opacity: 1; background: rgba(239,68,68,0.15); }
+
+#sidebar .resume-quick {
+  padding: 12px 16px;
+}
+#sidebar .resume-quick label {
+  font-size: 0.75rem; color: var(--sidebar-muted); text-transform: uppercase;
+  letter-spacing: 0.05em; display: block; margin-bottom: 6px;
+}
+#resume-path-input {
+  width: 100%; padding: 8px 10px; font-size: 0.8rem;
+  background: rgba(255,255,255,0.06); color: var(--sidebar-text);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
+  outline: none; transition: var(--transition);
+}
+#resume-path-input:focus { border-color: var(--primary); background: rgba(255,255,255,0.1); }
+#btn-resume-path {
+  width: 100%; margin-top: 6px; padding: 7px 12px; font-size: 0.8rem;
+  font-weight: 500; color: #fff;
+  background: rgba(102,126,234,0.25); border: 1px solid rgba(102,126,234,0.4);
+  border-radius: 6px; cursor: pointer; transition: var(--transition);
+}
+#btn-resume-path:hover { background: rgba(102,126,234,0.45); }
+
+/* Main Chat Area */
+#main-area {
+  grid-area: main; display: flex; flex-direction: column;
+  background: var(--chat-bg); overflow: hidden;
+}
+
+#chat-messages {
+  flex: 1; overflow-y: auto; padding: 1.5rem;
+  scroll-behavior: smooth;
+}
+#chat-messages::-webkit-scrollbar { width: 6px; }
+#chat-messages::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+
+/* Welcome message */
+.welcome-msg {
+  text-align: center; padding: 3rem 1rem; color: #6b7280;
+}
+.welcome-msg .welcome-icon { font-size: 3rem; margin-bottom: 1rem; }
+.welcome-msg h2 { font-size: 1.3rem; color: #374151; margin-bottom: 0.5rem; }
+.welcome-msg p { font-size: 0.9rem; max-width: 480px; margin: 0 auto; line-height: 1.6; }
+
+/* Message Bubbles */
+.msg-row { display: flex; margin-bottom: 1rem; animation: fadeInUp 0.3s ease; }
+@keyframes fadeInUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+.msg-row.user { justify-content: flex-end; }
+.msg-row.ai { justify-content: flex-start; }
+
+.msg-bubble {
+  max-width: 75%; padding: 12px 16px; border-radius: var(--radius);
+  line-height: 1.65; font-size: 0.9rem; word-break: break-word;
+  box-shadow: var(--shadow);
+}
+.msg-row.user .msg-bubble {
+  background: var(--user-bubble-bg); color: var(--user-bubble-text);
+  border-bottom-right-radius: 4px;
+}
+.msg-row.ai .msg-bubble {
+  background: var(--ai-bubble-bg); color: #1f2937;
+  border: 1px solid var(--ai-bubble-border);
+  border-bottom-left-radius: 4px;
+}
+.msg-bubble p { margin-bottom: 0.5rem; }
+.msg-bubble p:last-child { margin-bottom: 0; }
+.msg-bubble pre {
+  background: #1e1e2e; color: #cdd6f4; border-radius: var(--radius-sm);
+  padding: 12px 16px; overflow-x: auto; font-size: 0.82rem;
+  font-family: var(--font-mono); margin: 0.5rem 0;
+}
+.msg-bubble code {
+  background: rgba(0,0,0,0.06); padding: 2px 5px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 0.85em;
+}
+.msg-bubble pre code { background: none; padding: 0; }
+.msg-bubble ul, .msg-bubble ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+.msg-bubble li { margin-bottom: 0.25rem; }
+.msg-bubble strong { font-weight: 600; }
+.msg-bubble table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; }
+.msg-bubble th, .msg-bubble td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; font-size: 0.85rem; }
+.msg-bubble th { background: #f9fafb; font-weight: 600; }
+.msg-bubble h1, .msg-bubble h2, .msg-bubble h3 { margin: 1rem 0 0.5rem; }
+.msg-bubble h1 { font-size: 1.3rem; } .msg-bubble h2 { font-size: 1.15rem; } .msg-bubble h3 { font-size: 1rem; }
+.msg-bubble blockquote {
+  border-left: 3px solid var(--primary); padding-left: 12px;
+  color: #6b7280; margin: 0.5rem 0;
+}
+
+/* Special cards inside AI bubble */
+.score-card {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border: 1px solid #a7f3d0; border-radius: var(--radius-sm);
+  padding: 14px 16px; margin: 0.5rem 0;
+}
+.score-card .score-emoji { font-size: 1.5rem; }
+.score-card .score-num { font-weight: 700; font-size: 1.3rem; color: #059669; }
+.job-card {
+  background: #faf5ff; border: 1px solid #e9d5ff; border-radius: var(--radius-sm);
+  padding: 14px 16px; margin: 0.5rem 0; cursor: default;
+}
+.job-card .job-title { font-weight: 700; color: #7c3aed; }
+.job-card .job-meta { font-size: 0.8rem; color: #6b7280; margin-top: 2px; }
+.job-card .job-score {
+  display: inline-block; background: #7c3aed; color: #fff;
+  padding: 2px 10px; border-radius: 20px; font-size: 0.78rem; margin-top: 6px;
+}
+.report-card {
+  background: linear-gradient(135deg, #fefce8 0%, #fffbeb 100%);
+  border: 2px solid #fcd34d; border-radius: var(--radius);
+  padding: 20px 24px; margin: 0.5rem 0;
+}
+.report-card .report-score-big {
+  text-align: center; font-size: 2.5rem; font-weight: 800;
+  color: #b45309; margin-bottom: 0.5rem;
+}
+
+/* Loading dots */
+.typing-indicator { display: flex; gap: 4px; padding: 8px 0; }
+.typing-indicator span {
+  width: 8px; height: 8px; border-radius: 50%; background: #9ca3af;
+  animation: typingBounce 1.4s infinite ease-in-out;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingBounce { 0%,80%,100% { transform:scale(0.6); opacity:0.4; } 40% { transform:scale(1); opacity:1; } }
+
+/* Progress bar (interview) */
+.progress-bar-wrap { background: #e5e7eb; border-radius: 10px; height: 8px; margin: 0.5rem 0 0; overflow: hidden; }
+.progress-bar-fill { background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; border-radius: 10px; transition: width 0.4s ease; }
+
+/* Error banner */
+.error-banner {
+  background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
+  padding: 10px 16px; border-radius: var(--radius-sm); margin-bottom: 1rem;
+  font-size: 0.85rem; text-align: center;
+}
+
+/* Input Bar */
+#input-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 1.5rem; background: var(--input-bg);
+  border-top: 1px solid #e5e7eb; box-shadow: 0 -1px 3px rgba(0,0,0,0.04);
+}
+#input-bar textarea {
+  flex: 1; resize: none; padding: 10px 14px; font-size: 0.9rem;
+  border: 1px solid var(--input-border); border-radius: var(--radius);
+  outline: none; font-family: inherit; line-height: 1.5;
+  min-height: 42px; max-height: 120px; transition: var(--transition);
+}
+#input-bar textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(102,126,234,0.15); }
+#input-bar textarea:disabled { background: #f9fafb; }
+
+#input-bar button {
+  padding: 10px 20px; font-size: 0.9rem; font-weight: 600;
+  border: none; border-radius: var(--radius-sm); cursor: pointer;
+  transition: var(--transition); white-space: nowrap;
+}
+#btn-send {
+  background: var(--primary); color: #fff;
+  display: flex; align-items: center; gap: 6px;
+}
+#btn-send:hover:not(:disabled) { background: var(--primary-dark); }
+#btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+#btn-upload {
+  background: #fff; color: #374151; border: 1px solid var(--input-border) !important;
+  font-size: 0.85rem; padding: 10px 14px;
+}
+#btn-upload:hover { background: #f9fafb; }
+#file-input { display: none; }
+
+/* Toast */
+#toast {
+  position: fixed; top: 20px; right: 20px; z-index: 200;
+  padding: 12px 20px; border-radius: var(--radius-sm); font-size: 0.85rem;
+  font-weight: 500; color: #fff; opacity: 0; transform: translateX(20px);
+  transition: all 0.3s ease; pointer-events: none;
+}
+#toast.show { opacity: 1; transform: translateX(0); }
+#toast.success { background: #059669; }
+#toast.error { background: #dc2626; }
+#toast.info { background: #2563eb; }
+
+/* Streaming cursor */
+.stream-cursor {
+  display: inline;
+  animation: cursorBlink 1s infinite;
+  color: var(--primary);
+  font-weight: 700;
+}
+@keyframes cursorBlink { 0%,50% { opacity:1; } 51%,100% { opacity:0; } }
+
+/* Responsive */
+@media (max-width: 768px) {
+  #chat-app { grid-template-columns: 1fr; grid-template-areas: "topbar" "main"; }
+  #sidebar { display: none; }
+  #sidebar.open { display: flex; position: fixed; top: 56px; left: 0; bottom: 0; z-index: 50; width: 260px; }
+  .msg-bubble { max-width: 90%; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     Landing Page
+     ============================================================ -->
+<div id="landing-page">
+  <canvas id="landing-canvas"></canvas>
+  <div class="landing-content">
+    <h1>AI 面试官</h1>
+    <p class="subtitle">基于 LangGraph 的多 Agent 智能面试系统</p>
+    <button class="cta-btn" id="btn-start" onclick="startApp()">开 始 体 验</button>
+  </div>
+</div>
+
+<!-- ============================================================
+     Main Chat App
+     ============================================================ -->
+<div id="chat-app">
+  <!-- Top Bar -->
+  <div id="topbar">
+    <span class="brand">🤖 AI 面试官</span>
+    <span>
+      <span class="status-dot"></span>
+      <span class="status-text" id="status-label">就绪</span>
+    </span>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-section">
+      <button id="btn-new-session" onclick="newSession()">✚ 新建会话</button>
+    </div>
+    <div id="session-list"></div>
+    <div class="resume-quick">
+      <label>📂 简历路径（快捷发送）</label>
+      <input type="text" id="resume-path-input" placeholder="E:/my_resume.pdf" />
+      <button id="btn-resume-path" onclick="sendResumePath()">📎 发送到聊天</button>
+    </div>
+  </div>
+
+  <!-- Main Chat Area -->
+  <div id="main-area">
+    <div id="chat-messages"></div>
+    <div id="input-bar">
+      <input type="file" id="file-input" accept=".pdf,.docx,.doc,.txt" onchange="handleFileUpload(this)" />
+      <button id="btn-upload" onclick="document.getElementById('file-input').click()" title="上传简历">📄</button>
+      <textarea id="msg-input" rows="1" placeholder="输入消息... (Enter 发送，Shift+Enter 换行)" onkeydown="handleInputKey(event)"></textarea>
+      <button id="btn-send" onclick="sendMessage()">发送 ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- ============================================================
+     JavaScript
+     ============================================================ -->
+<script>
+// ==================== Globals ====================
+const API = '';
+let currentSessionId = null;
+let isLoading = false;
+const LOCAL_KEY = 'ai_interviewer_sessions';  // localStorage key for session_id list
+
+// ==================== Toast ====================
+let toastTimer = null;
+function showToast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `${type}`;
+  // force reflow
+  void el.offsetWidth;
+  el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.classList.remove('show'); }, 3000);
+}
+
+// ==================== Markdown Config ====================
+if (typeof marked !== 'undefined') {
+  marked.setOptions({
+    breaks: true,
+    gfm: true,
+  });
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  if (typeof marked !== 'undefined') {
+    try {
+      // Basic sanitization: strip script tags before rendering
+      const sanitized = text.replace(/<script[\s\S]*?<\/script>/gi, '')
+                            .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+                            .replace(/javascript:/gi, 'blocked:');
+      const html = marked.parse(sanitized);
+      return html;
+    } catch (e) {
+      return escapeHtml(text);
+    }
+  }
+  return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Escape for use inside JS single-quoted strings in onclick handlers
+function escapeJs(str) {
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// ==================== Session Management ====================
+function getLocalSessions() {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveLocalSession(sessionId) {
+  const sessions = getLocalSessions();
+  if (!sessions.includes(sessionId)) {
+    sessions.push(sessionId);
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(sessions));
+  }
+}
+
+function removeLocalSession(sessionId) {
+  const sessions = getLocalSessions().filter(s => s !== sessionId);
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(sessions));
+}
+
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+async function loadSessionList() {
+  try {
+    const res = await fetch(`${API}/api/sessions`);
+    if (!res.ok) return;
+    const data = await res.json();
+    renderSessionList(data.sessions || []);
+  } catch (e) {
+    console.error('loadSessionList error:', e);
+  }
+}
+
+function renderSessionList(sessions) {
+  const container = document.getElementById('session-list');
+  if (!sessions.length) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#6c7086;font-size:0.8rem;">暂无历史会话</div>';
+    return;
+  }
+  container.innerHTML = sessions.map(s => {
+    const isActive = s.session_id === currentSessionId;
+    const timeStr = formatRelativeTime(s.updated_at);
+    const sidJs = escapeJs(s.session_id);
+    return `
+      <div class="session-item${isActive ? ' active' : ''}" data-sid="${escapeHtml(s.session_id)}" onclick="switchSession('${sidJs}')">
+        <span class="session-title" title="${escapeHtml(s.title)}">📝 ${escapeHtml(s.title)}</span>
+        <span class="session-meta">${timeStr}</span>
+        <span class="session-delete" onclick="deleteSession(event, '${sidJs}')" title="删除会话">✕</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function formatRelativeTime(isoStr) {
+  if (!isoStr) return '';
+  const now = new Date();
+  const then = new Date(isoStr);
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return '刚刚';
+  if (diffMin < 60) return `${diffMin}分钟前`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}小时前`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}天前`;
+  return then.toLocaleDateString('zh-CN');
+}
+
+// ==================== Chat UI ====================
+function scrollToBottom() {
+  const el = document.getElementById('chat-messages');
+  requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+}
+
+function renderMessages(messages) {
+  const container = document.getElementById('chat-messages');
+  if (!messages || !messages.length) {
+    container.innerHTML = buildWelcomeHtml();
+    scrollToBottom();
+    return;
+  }
+
+  container.innerHTML = messages.map(m => buildMessageHtml(m)).join('');
+  scrollToBottom();
+}
+
+function buildWelcomeHtml() {
+  return `
+    <div class="welcome-msg">
+      <div class="welcome-icon">🤖</div>
+      <h2>欢迎使用 AI 面试官</h2>
+      <p>您可以上传简历、匹配岗位、开始模拟面试，或直接问我技术问题。</p>
+      <p style="margin-top:0.5rem;font-size:0.82rem;color:#9ca3af;">
+        💡 试试输入「帮我匹配岗位」开始体验
+      </p>
+    </div>
+  `;
+}
+
+function buildMessageHtml(m) {
+  if (m.role === 'user') {
+    return `<div class="msg-row user"><div class="msg-bubble">${escapeHtml(m.content)}</div></div>`;
+  }
+
+  // AI message - render markdown + detect special cards
+  const rawContent = m.content || '';
+  const html = renderMarkdown(rawContent);
+
+  // Wrap in standard bubble; special card detection done via CSS hooks
+  // Score detection: if content contains "评分：" pattern, add score-card class context
+  // We don't need to do this at JS level - the markdown renders it naturally.
+  // But we can enhance score displays and job matches with CSS.
+
+  return `<div class="msg-row ai"><div class="msg-bubble">${html}</div></div>`;
+}
+
+function addMessageToChat(role, content) {
+  const container = document.getElementById('chat-messages');
+  // Remove welcome if present
+  const welcome = container.querySelector('.welcome-msg');
+  if (welcome) welcome.remove();
+
+  const div = document.createElement('div');
+  div.innerHTML = buildMessageHtml({ role, content });
+  container.appendChild(div.firstElementChild);
+  scrollToBottom();
+}
+
+function showTypingIndicator() {
+  const container = document.getElementById('chat-messages');
+  const welcome = container.querySelector('.welcome-msg');
+  if (welcome) welcome.remove();
+
+  const div = document.createElement('div');
+  div.className = 'msg-row ai';
+  div.id = 'typing-indicator-row';
+  div.innerHTML = `
+    <div class="msg-bubble">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:0.85rem;color:#6b7280;">🤔 AI 正在思考...</span>
+        <div class="typing-indicator"><span></span><span></span><span></span></div>
+      </div>
+    </div>`;
+  container.appendChild(div);
+  scrollToBottom();
+}
+
+function hideTypingIndicator() {
+  const el = document.getElementById('typing-indicator-row');
+  if (el) el.remove();
+}
+
+function setLoading(state) {
+  isLoading = state;
+  const btn = document.getElementById('btn-send');
+  const input = document.getElementById('msg-input');
+  btn.disabled = state;
+  input.disabled = state;
+  if (state) {
+    btn.innerHTML = '⏳';
+    document.getElementById('status-label').textContent = '思考中...';
+  } else {
+    btn.innerHTML = '发送 ▶';
+    document.getElementById('status-label').textContent = '就绪';
+  }
+}
+
+// ==================== Chat Send (Non-Streaming) ====================
+async function sendChatMessage(message) {
+  if (isLoading) return;
+
+  if (!currentSessionId) {
+    currentSessionId = generateUUID();
+    saveLocalSession(currentSessionId);
+  }
+
+  // 1. 显示用户消息
+  addMessageToChat('user', message);
+  const inputEl = document.getElementById('msg-input');
+  if (inputEl) { inputEl.value = ''; inputEl.style.height = 'auto'; }
+
+  // 2. 显示「思考中」状态，禁用输入
+  showTypingIndicator();
+  setLoading(true);
+
+  try {
+    const response = await fetch(`${API}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: currentSessionId, message }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // 3. 移除思考提示，显示 AI 回复（只显示一条）
+    hideTypingIndicator();
+
+    if (data.error) {
+      addMessageToChat('ai', `❌ ${data.reply}`);
+    } else {
+      addMessageToChat('ai', data.reply);
+    }
+
+    // 更新状态栏
+    if (data.interview_stage) {
+      document.getElementById('status-label').textContent =
+        data.interview_stage === 'idle' ? '就绪' : data.interview_stage;
+    }
+
+    // 刷新会话列表
+    await loadSessionList();
+    highlightCurrentSession();
+
+  } catch (e) {
+    hideTypingIndicator();
+    addMessageToChat('ai', `❌ 网络错误: ${escapeHtml(e.message)}`);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ==================== API Calls ====================
+async function sendMessage() {
+  // 防止重复发送
+  if (isLoading) return;
+  const input = document.getElementById('msg-input');
+  const message = input.value.trim();
+  if (!message) return;
+  input.value = '';
+  input.style.height = 'auto';
+  await sendChatMessage(message);
+}
+
+async function handleFileUpload(inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+
+  // 防止重复提交
+  if (isLoading) {
+    showToast('请等待当前操作完成', 'info');
+    inputEl.value = '';
+    return;
+  }
+
+  if (!currentSessionId) {
+    currentSessionId = generateUUID();
+    saveLocalSession(currentSessionId);
+  }
+
+  setLoading(true);
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('session_id', currentSessionId);
+
+  showToast('正在上传文件...', 'info');
+
+  try {
+    const res = await fetch(`${API}/api/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      showToast(errData.detail || '上传失败', 'error');
+      return;
+    }
+
+    const data = await res.json();
+    showToast('文件上传成功！正在解析...', 'success');
+
+    // Auto-send file path via chat
+    addMessageToChat('user', `📄 已上传：${data.filename}`);
+    // 临时解锁，让 sendChatMessage 自己管理 loading 状态
+    setLoading(false);
+    await sendChatMessage(data.file_path);
+
+  } catch (e) {
+    hideTypingIndicator();
+    showToast('上传失败: ' + e.message, 'error');
+  } finally {
+    setLoading(false);
+    inputEl.value = '';
+  }
+}
+
+async function sendResumePath() {
+  if (isLoading) {
+    showToast('请等待当前操作完成', 'info');
+    return;
+  }
+  const input = document.getElementById('resume-path-input');
+  const path = input.value.trim();
+  if (!path) {
+    showToast('请输入简历文件路径', 'info');
+    return;
+  }
+  input.value = '';
+  await sendChatMessage(path);
+}
+
+// ==================== Session Operations ====================
+async function newSession() {
+  const newId = generateUUID();
+
+  // Try to reset the new session's state on the server (may not exist yet — that's fine)
+  try {
+    await fetch(`${API}/api/reset/${encodeURIComponent(newId)}`, { method: 'POST' });
+  } catch (e) {
+    // Ignore — session doesn't exist yet on server
+  }
+
+  currentSessionId = newId;
+  saveLocalSession(currentSessionId);
+  renderMessages([]);  // show welcome
+  await loadSessionList();
+  highlightCurrentSession();
+  showToast('新会话已创建', 'success');
+}
+
+async function switchSession(sessionId) {
+  if (isLoading) return;
+  if (sessionId === currentSessionId) return;
+
+  currentSessionId = sessionId;
+  saveLocalSession(sessionId);
+
+  // ★ 先清空聊天区 DOM，避免残留旧会话的流式元素
+  const container = document.getElementById('chat-messages');
+  container.innerHTML = '';
+  hideTypingIndicator();
+  const streamRow = document.getElementById('stream-row');
+  if (streamRow) streamRow.remove();
+
+  // 显示加载中状态
+  container.innerHTML = '<div class="welcome-msg"><div class="welcome-icon">⏳</div><h2>加载中...</h2></div>';
+
+  // Load history from server
+  try {
+    const res = await fetch(`${API}/api/session/${encodeURIComponent(sessionId)}/history`);
+    if (res.ok) {
+      const data = await res.json();
+      renderMessages(data.messages || []);
+    } else {
+      renderMessages([]);
+    }
+  } catch (e) {
+    renderMessages([]);
+  }
+
+  highlightCurrentSession();
+}
+
+async function deleteSession(event, sessionId) {
+  event.stopPropagation();
+
+  if (!confirm('确定要删除这个会话吗？此操作不可撤销。')) return;
+
+  try {
+    await fetch(`${API}/api/session/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+  } catch (e) {
+    // Continue even if server delete fails
+  }
+
+  removeLocalSession(sessionId);
+
+  // If we deleted the current session, switch to a new one
+  if (sessionId === currentSessionId) {
+    currentSessionId = null;
+    const sessions = getLocalSessions();
+    if (sessions.length > 0) {
+      await switchSession(sessions[sessions.length - 1]);
+    } else {
+      await newSession();
+    }
+  } else {
+    await loadSessionList();
+  }
+
+  showToast('会话已删除', 'info');
+}
+
+function highlightCurrentSession() {
+  document.querySelectorAll('.session-item').forEach(el => {
+    const sid = el.getAttribute('data-sid');
+    if (sid === currentSessionId) {
+      el.classList.add('active');
+    } else {
+      el.classList.remove('active');
+    }
+  });
+}
+
+// ==================== Input Handling ====================
+function handleInputKey(event) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    // 防止 Enter 键和按钮同时触发 sendMessage
+    if (isLoading) return;
+    sendMessage();
+  }
+}
+
+// Auto-resize textarea
+document.addEventListener('DOMContentLoaded', () => {
+  const textarea = document.getElementById('msg-input');
+  if (textarea) {
+    textarea.addEventListener('input', () => {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    });
+  }
+});
+
+// ==================== Drag & Drop File Upload ====================
+document.addEventListener('DOMContentLoaded', () => {
+  const mainArea = document.getElementById('main-area');
+  if (!mainArea) return;
+
+  mainArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    mainArea.style.background = '#eef2ff';
+  });
+
+  mainArea.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    mainArea.style.background = '';
+  });
+
+  mainArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    mainArea.style.background = '';
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const fileInput = document.getElementById('file-input');
+      // Create a DataTransfer to set files on the input
+      const dt = new DataTransfer();
+      dt.items.add(files[0]);
+      fileInput.files = dt.files;
+      handleFileUpload(fileInput);
+    }
+  });
+});
+
+// ==================== App Start ====================
+async function startApp() {
+  // Hide landing page, stop animation
+  document.getElementById('landing-page').style.display = 'none';
+  document.getElementById('chat-app').classList.add('visible');
+  stopFireworks();
+
+  // Restore last session or create new
+  const localSessions = getLocalSessions();
+  await loadSessionList();
+
+  if (localSessions.length > 0) {
+    // Use the most recent session
+    currentSessionId = localSessions[localSessions.length - 1];
+    saveLocalSession(currentSessionId);
+    await switchSession(currentSessionId);
+  } else {
+    await newSession();
+  }
+
+  highlightCurrentSession();
+}
+
+// ==================== Firework Animation ====================
+const canvas = document.getElementById('landing-canvas');
+const ctx = canvas.getContext('2d');
+let fireworks = [];
+let animFrameId = null;
+let animRunning = true;
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// Particle class
+class Particle {
+  constructor(x, y, color, vx, vy, size, life) {
+    this.x = x;
+    this.y = y;
+    this.color = color;
+    this.vx = vx;
+    this.vy = vy;
+    this.size = size;
+    this.life = life;
+    this.maxLife = life;
+    this.gravity = 0.04;
+    this.friction = 0.98;
+  }
+
+  update() {
+    this.vx *= this.friction;
+    this.vy *= this.friction;
+    this.vy += this.gravity;
+    this.x += this.vx;
+    this.y += this.vy;
+    this.life--;
+    this.size *= 0.995;
+  }
+
+  draw(ctx) {
+    const alpha = this.life / this.maxLife;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  get alive() { return this.life > 0; }
+}
+
+// Firework class
+class Firework {
+  constructor(canvasW, canvasH) {
+    this.x = Math.random() * canvasW * 0.8 + canvasW * 0.1;
+    this.y = canvasH;
+    this.targetY = Math.random() * canvasH * 0.4 + canvasH * 0.1;
+    this.speed = Math.random() * 4 + 5;
+    this.trailParticles = [];
+    this.exploded = false;
+    this.particles = [];
+    this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    this.trailCount = 0;
+  }
+
+  update(canvasW, canvasH) {
+    if (!this.exploded) {
+      // Rising phase
+      this.y -= this.speed;
+      this.speed *= 0.985;
+
+      // Trail
+      this.trailCount++;
+      if (this.trailCount % 2 === 0) {
+        this.trailParticles.push(new Particle(
+          this.x + (Math.random() - 0.5) * 4,
+          this.y,
+          this.color,
+          (Math.random() - 0.5) * 0.3,
+          Math.random() * 1.5 + 0.5,
+          Math.random() * 2 + 1,
+          20 + Math.random() * 15
+        ));
+      }
+
+      if (this.y <= this.targetY) {
+        this.explode();
+      }
+    }
+
+    // Update trail particles
+    this.trailParticles = this.trailParticles.filter(p => {
+      p.update();
+      return p.alive;
+    });
+
+    // Update explosion particles
+    if (this.exploded) {
+      this.particles = this.particles.filter(p => {
+        p.update();
+        return p.alive;
+      });
+    }
+  }
+
+  explode() {
+    this.exploded = true;
+    const count = 80 + Math.floor(Math.random() * 80);
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+      const speed = Math.random() * 6 + 1;
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed;
+      const color = Math.random() < 0.3 ? this.color : COLORS[Math.floor(Math.random() * COLORS.length)];
+      this.particles.push(new Particle(
+        this.x, this.y, color, vx, vy,
+        Math.random() * 3 + 1.5,
+        40 + Math.random() * 60
+      ));
+    }
+  }
+
+  get done() {
+    return this.exploded && this.particles.length === 0 && this.trailParticles.length === 0;
+  }
+
+  draw(ctx) {
+    // Draw trail particles
+    this.trailParticles.forEach(p => p.draw(ctx));
+
+    // Draw explosion particles
+    this.particles.forEach(p => p.draw(ctx));
+
+    // Draw rising firework head
+    if (!this.exploded) {
+      ctx.save();
+      ctx.fillStyle = this.color;
+      ctx.shadowColor = this.color;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+const COLORS = [
+  '#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3',
+  '#54a0ff', '#5f27cd', '#00d2d3', '#ff6348',
+  '#7bed9f', '#e056a0', '#ffa502', '#2ed573',
+  '#1e90ff', '#ff4757', '#eccc68', '#a29bfe',
+];
+
+function spawnFirework() {
+  if (!animRunning) return;
+  fireworks.push(new Firework(canvas.width, canvas.height));
+  // Random interval for next firework
+  const delay = 400 + Math.random() * 1200;
+  setTimeout(spawnFirework, delay);
+}
+
+function animate() {
+  if (!animRunning) return;
+
+  ctx.fillStyle = 'rgba(15, 15, 26, 0.18)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  fireworks = fireworks.filter(fw => !fw.done);
+  fireworks.forEach(fw => {
+    fw.update(canvas.width, canvas.height);
+    fw.draw(ctx);
+  });
+
+  animFrameId = requestAnimationFrame(animate);
+}
+
+function stopFireworks() {
+  animRunning = false;
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+  fireworks = [];
+}
+
+// Start animation on load
+window.addEventListener('DOMContentLoaded', () => {
+  resizeCanvas();
+  animRunning = true;
+  spawnFirework();
+  // Spawn a second firework slightly later for initial burst
+  setTimeout(spawnFirework, 300);
+  animate();
+});
+
+// Handle window visibility changes to pause/resume animation
+document.addEventListener('visibilitychange', () => {
+  if (document.getElementById('landing-page').style.display === 'none') return;
+  if (document.hidden) {
+    animRunning = false;
+  } else if (!animRunning) {
+    animRunning = true;
+    animate();
+    spawnFirework();
+  }
+});
+</script>
+
+</body>
+</html>
