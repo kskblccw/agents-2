@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-import sys
-import agents.resume_match_agent
-print("加载的文件路径:", agents.resume_match_agent.__file__)
-print("Python 路径:", sys.executable)
-print("模块搜索路径:", sys.path)
 """
 AI 面试官主程序 — 多 Agent 版
 =============================

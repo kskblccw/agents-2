@@ -87,10 +87,6 @@ Supervisor 使用多阶段决策管道，优先级从高到低：
 - **LLM 调用**：3 次重试 + 指数退避（`LLMClient` in agents/utils.py）
 - **JSON 解析**：LLM 返回格式异常时 fallback 到默认值
 
-### V1 遗留代码
-
-[agent_graph.py](agent_graph.py) 和 [agent_core.py](agent_core.py) 中的 `InterviewerAgent` 类是 V1 单 Agent 架构（一个 LLM 节点绑定 6 个 Tool），当前 Web 服务已不使用，但 `agent_core.py` 中的 `MatcherAgent` 和 `@tool` 函数仍被 V2 系统调用。`agent_main.py` 是 CLI 入口，也仍在使用。
-
 ### 关键集成点
 
 - **ChromaDB**（[vector_db.py](vector_db.py)）：存储岗位描述的向量嵌入，`MatcherAgent.match_resume()` 做语义相似度检索
