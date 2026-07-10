@@ -8,8 +8,6 @@
 包含类：
 1. MatcherAgent - 简历与职位匹配智能体
 2. InterviewerAgent - 模拟面试智能体
-
-作者：AI助手
 """
 from dotenv import load_dotenv
 load_dotenv()
