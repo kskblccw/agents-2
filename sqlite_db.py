@@ -8,7 +8,7 @@ SQLite 数据库模块 (sqlite_db.py)
 包含类：
 1. InterviewDatabase - 数据库操作类
 
-作者：AI助手
+
 """
 
 import sqlite3
