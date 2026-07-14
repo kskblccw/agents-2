@@ -109,7 +109,6 @@ uvicorn web_server:app --reload --host 0.0.0.0 --port 8000
 ├── vector_db.py           # ChromaDB 向量数据库
 ├── resume_parser.py       # 简历解析器
 ├── sqlite_db.py           # SQLite 数据库操作
-├── generate_paper.py      # 论文生成脚本
 ├── static/
 │   └── index.html         # Web 前端界面
 ├── interview_kb/          # 面试知识库文档
